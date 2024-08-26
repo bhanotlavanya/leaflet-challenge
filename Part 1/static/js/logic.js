@@ -1,69 +1,67 @@
-let earthquakeJSON = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"; // The Earthquake JSON URL
+const earthquakeDataUrl = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"; // URL for fetching earthquake data in JSON format
 
-// Get the JSON data from that URL
-d3.json(earthquakeJSON).then((data) => {
-    // Get the features field, which contains the earthquake data
-    let quakeData = data.features;
+// Load the earthquake data from the specified URL
+d3.json(earthquakeDataUrl).then((response) => {
+    // Extract the relevant data (features) from the response
+    let earthquakeArray = response.features;
 
-    const colorSchemeInterpolated = d3.interpolateRgbBasis(["lime", "orange", "darkred"]); // The color range that will be used to indicate the depth of each feature 
-    const colorVarsDiscrete = [-10, 10, 30, 50, 70, 90]; // The groups into which all the depths of each feature will be aggregated
-    const color = d3.scaleSequentialQuantile(colorVarsDiscrete, colorSchemeInterpolated); // The color scale that will be used to assign to each marker its color based on the depth of its associated feature
+    const depthColorScale = d3.interpolateRgbBasis(["lime", "orange", "darkred"]); // Interpolated color scheme based on earthquake depth
+    const depthRanges = [-10, 10, 30, 50, 70, 90]; // Defined depth categories for color mapping
+    const depthColor = d3.scaleSequentialQuantile(depthRanges, depthColorScale); // Create a color scale function based on depth ranges
 
-    // Function for creating the circle markers for each feature
-    function pointToLayer(feature, latlng) {
+    // Function to generate circle markers for each earthquake data point
+    function createCircleMarker(earthquake, latlng) {
         return L.circleMarker(latlng, {
-            radius: feature.properties.mag*4,
+            radius: earthquake.properties.mag * 4, // Size of the marker based on earthquake magnitude
             stroke: true,
             weight: 1,
             fillOpacity: 1,
             color: "black",
-            fillColor: color(feature.geometry.coordinates[2])
+            fillColor: depthColor(earthquake.geometry.coordinates[2]) // Color based on depth
         });
     };
 
-    // Function for creating popups that display the place and time of each feature
-    function onEachFeature(feature, layer) {
-        layer.bindPopup(`<h3>${feature.properties.place}</h3><hr><p>${new Date(feature.properties.time)}\n Magnitude: ${feature.properties.mag} \n Depth: ${feature.geometry.coordinates[2]}km</p>`);
+    // Function to bind a popup to each marker displaying earthquake details
+    function bindPopupContent(earthquake, layer) {
+        layer.bindPopup(
+            `<h3>${earthquake.properties.place}</h3><hr><p>${new Date(earthquake.properties.time)}<br>Magnitude: ${earthquake.properties.mag}<br>Depth: ${earthquake.geometry.coordinates[2]} km</p>`
+        );
     };
 
-    // Create a GeoJSON layer that contains the features array on the quakeData object.
-    // Run the previous functions for each feature of the array.
-    let quakes = L.geoJSON(quakeData, {
-        pointToLayer: pointToLayer,
-        onEachFeature: onEachFeature
-      });
-
-    // Create the default base map layer
-    // The access token used to get the base map tiles from Mapbox
-    let accessToken = 'pk.eyJ1IjoibWFwLTF0LTB1dCIsImEiOiJjbHpyaDI3ZW4wNnpoMmxvbm1ka25xNGVtIn0.v7zheM6QmhTBzaEFLtxLXg';
-    let street = L.tileLayer.provider('MapBox', {
-        id: 'mapbox/light-v11',
-        accessToken: accessToken
-        });
-
-    // Create the map with the streetmap and earthquakes layers to display on load.
-    let myMap = L.map("map", {
-        center: [
-            30.0, 0.0
-          ],
-          zoom: 2.2,
-        layers: [street, quakes]
+    // Create a GeoJSON layer with the earthquake data, applying the marker and popup functions
+    let earthquakeLayer = L.geoJSON(earthquakeArray, {
+        pointToLayer: createCircleMarker,
+        onEachFeature: bindPopupContent
     });
 
-    // Creating legend steps:
-    var legend = L.control({position: 'bottomright'}); // Specify legend position in map
+    // Initialize the base map layer
+    let mapboxToken = 'pk.eyJ1IjoibWFwLTF0LTB1dCIsImEiOiJjbHpyaDI3ZW4wNnpoMmxvbm1ka25xNGVtIn0.v7zheM6QmhTBzaEFLtxLXg';
+    let streetMap = L.tileLayer.provider('MapBox', {
+        id: 'mapbox/light-v11',
+        accessToken: mapboxToken
+    });
 
-    // Steps for generating the content/info that legend will display;
-    legend.onAdd = () => {
-        var div = L.DomUtil.create('div', 'info legend');
-        // loop through the depth intervals and generate a label with a colored square for each interval     
-        colorVarsDiscrete.map((v, i) => {
-            div.innerHTML +=
-                '<i style="background:' + color(v + 1) + '"></i> ' +
-                v + (colorVarsDiscrete[i + 1] ? '&ndash;' + colorVarsDiscrete[i + 1] + '<br>' : '+');
+    // Create the map with the specified center, zoom level, and initial layers
+    let mapInstance = L.map("map", {
+        center: [30.0, 0.0],
+        zoom: 2.2,
+        layers: [streetMap, earthquakeLayer]
+    });
+
+    // Define the legend and its position on the map
+    let legendControl = L.control({ position: 'bottomright' });
+
+    // Function to generate the legend content
+    legendControl.onAdd = () => {
+        let legendDiv = L.DomUtil.create('div', 'info legend');
+        // Iterate over the depth ranges and create legend items
+        depthRanges.forEach((range, index) => {
+            legendDiv.innerHTML +=
+                `<i style="background:${depthColor(range + 1)}"></i> ${range}${depthRanges[index + 1] ? '&ndash;' + depthRanges[index + 1] + '<br>' : '+'}`;
         });
-        return div;
+        return legendDiv;
     };
 
-    legend.addTo(myMap); // Add the legend into the map
+    // Add the legend to the map
+    legendControl.addTo(mapInstance);
 });
